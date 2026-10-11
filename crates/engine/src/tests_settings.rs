@@ -357,8 +357,9 @@ fn atomic_write_survives_a_crash_mid_write() {
     let f = d.join("p.ecproj");
     atomic_write(&f, b"version 1").unwrap();
     // The writer dies halfway through the temporary file.
-    let r = atomic_write_with(&f, b"version 2 is much longer", |tmp, data| {
-        std::fs::write(tmp, &data[..5])?;
+    let r = atomic_write_with(&f, b"version 2 is much longer", |file, data| {
+        use std::io::Write;
+        file.write_all(&data[..5])?;
         Err(std::io::Error::other("power cut"))
     });
     assert!(r.is_err());
@@ -370,6 +371,60 @@ fn atomic_write_survives_a_crash_mid_write() {
     atomic_write(&f, b"version 3").unwrap();
     assert_eq!(std::fs::read(&f).unwrap(), b"version 3");
     let _ = std::fs::remove_dir_all(d);
+}
+
+#[cfg(unix)]
+#[test]
+fn atomic_saves_ignore_legacy_symlinks_and_keep_staging_private() {
+    use std::io::Write;
+    use std::os::unix::fs::{PermissionsExt, symlink};
+    let d = tmp("private-atomic");
+    let target = d.join("work.ecproj");
+    let unrelated = d.join("unrelated.txt");
+    std::fs::write(&unrelated, b"keep").unwrap();
+    symlink(&unrelated, temp_path(&target)).unwrap();
+    atomic_write(&target, b"first").unwrap();
+    assert_eq!(std::fs::read(&unrelated).unwrap(), b"keep");
+    assert_eq!(std::fs::metadata(&target).unwrap().permissions().mode() & 0o777, 0o600);
+    std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o640)).unwrap();
+    atomic_write_with(&target, b"second", |file, data| {
+        assert_eq!(file.metadata()?.permissions().mode() & 0o777, 0o600);
+        file.write_all(data)
+    })
+    .unwrap();
+    assert_eq!(std::fs::read(&target).unwrap(), b"second");
+    assert_eq!(std::fs::metadata(&target).unwrap().permissions().mode() & 0o777, 0o640);
+    assert_eq!(std::fs::read_dir(&d).unwrap().count(), 3, "only our staging file was removed");
+    std::fs::remove_dir_all(d).unwrap();
+}
+
+#[test]
+fn overlapping_atomic_saves_keep_complete_contents() {
+    use std::io::Write;
+    let d = tmp("concurrent-atomic");
+    let path = d.join("work.ecproj");
+    let barrier = Arc::new(std::sync::Barrier::new(2));
+    let handles: Vec<_> = [b'a', b'b']
+        .into_iter()
+        .map(|byte| {
+            let path = path.clone();
+            let barrier = barrier.clone();
+            std::thread::spawn(move || {
+                atomic_write_with(&path, &vec![byte; 4096], |file, data| {
+                    file.write_all(data)?;
+                    barrier.wait();
+                    Ok(())
+                })
+            })
+        })
+        .collect();
+    for handle in handles {
+        handle.join().unwrap().unwrap();
+    }
+    let saved = std::fs::read(&path).unwrap();
+    assert!(saved == vec![b'a'; 4096] || saved == vec![b'b'; 4096]);
+    assert_eq!(std::fs::read_dir(&d).unwrap().count(), 1);
+    std::fs::remove_dir_all(d).unwrap();
 }
 
 #[test]

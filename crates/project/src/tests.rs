@@ -75,6 +75,76 @@ fn unique_names_and_cycles() {
 }
 
 #[test]
+fn comp_containment_terminates_for_cycles_and_long_chains() {
+    let (mut p, first) = project_with_layer();
+    let mut previous = first;
+    for _ in 0..4096 {
+        let comp = Comp::new(8, 8, FrameRate::FPS_29_97, Tick::from_seconds_f64(1.0));
+        let next = p.add_item("Nested", effectcraft_color::Label::Sandstone, None, ItemKind::Comp(comp.clone().into()));
+        let layer = build::layer(&mut p, &comp, "Nested", LayerSource::Comp { item: next }, (8, 8), None);
+        p.comp_mut(previous).unwrap().layers.push(layer);
+        previous = next;
+    }
+    let comp = p.comp(previous).unwrap().clone();
+    let layer = build::layer(&mut p, &comp, "Cycle", LayerSource::Comp { item: first }, (8, 8), None);
+    p.comp_mut(previous).unwrap().layers.push(layer);
+    assert!(p.comp_contains(first, previous));
+    assert!(p.comp_contains(previous, first));
+    assert!(!p.comp_contains(first, crate::ItemId(u64::MAX)));
+}
+
+#[test]
+fn native_files_reject_exhausted_identifier_spaces() {
+    for kind in 0..6 {
+        for id in [u64::MAX, u64::MAX - 1] {
+            let (mut p, cid) = project_with_layer();
+            match kind {
+                0 => p.next_id = id,
+                1 => {
+                    let mut item = p.items.remove(&cid).unwrap();
+                    item.id = crate::ItemId(id);
+                    p.items.insert(item.id, item);
+                }
+                2 => p.comp_mut(cid).unwrap().layers[0].id = crate::LayerId(id),
+                3 => p.comp_mut(cid).unwrap().layers[0].props.uid = id,
+                4 => p.render_queue.push(crate::render_queue::RenderQueueItem::new(id, cid)),
+                _ => {
+                    p.comp_mut(cid).unwrap().essential = Some(crate::essential::EssentialGraphics {
+                        name: "Controls".into(),
+                        controls: vec![crate::essential::EgControl {
+                            id,
+                            name: "Note".into(),
+                            kind: crate::essential::EgKind::Comment { text: String::new() },
+                            as_type: None,
+                        }],
+                    })
+                }
+            }
+            assert!(Project::from_json(&p.to_json()).is_err(), "kind {kind}, id {id}");
+        }
+    }
+    let (mut p, cid) = project_with_layer();
+    p.render_queue.push(crate::render_queue::RenderQueueItem::new(10_000, cid));
+    p.next_id = 1;
+    let mut loaded = Project::from_json(&p.to_json()).unwrap();
+    assert_eq!(loaded.alloc(), 10_001);
+}
+
+#[test]
+fn template_offsets_reject_overflow_without_changing_the_project() {
+    let (mut p, cid) = project_with_layer();
+    p.next_id = u64::MAX / 2;
+    let before = p.clone();
+    assert!(crate::essential::offset_ids(&mut p, u64::MAX / 2).is_err());
+    assert_eq!(p, before);
+    p.next_id = 100;
+    p.comp_mut(cid).unwrap().layers[0].parent = Some(crate::LayerId(u64::MAX));
+    let before = p.clone();
+    assert!(crate::essential::offset_ids(&mut p, 100).is_err());
+    assert_eq!(p, before);
+}
+
+#[test]
 fn camera_and_light_layers_build() {
     let (mut p, cid) = project_with_layer();
     let comp = p.comp(cid).unwrap().clone();

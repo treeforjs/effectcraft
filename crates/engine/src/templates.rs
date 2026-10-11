@@ -486,7 +486,7 @@ pub fn encode_thumb(w: u32, h: u32, rgba: &[u8]) -> String {
 /// Decode a thumbnail to RGB bytes (THUMB_W×THUMB_H×3).
 pub fn decode_thumb(text: &str) -> Option<Vec<u8>> {
     let t = text.trim();
-    if t.len() != THUMB_W * THUMB_H * 6 {
+    if t.len() != THUMB_W * THUMB_H * 6 || !t.is_ascii() {
         return None;
     }
     (0..t.len()).step_by(2).map(|i| u8::from_str_radix(&t[i..i + 2], 16).ok()).collect()
@@ -734,20 +734,7 @@ fn footage_dir(s: &Session, name: &str, footage_dir: Option<&str>, project_path:
 /// Write a template's embedded footage (`media/…` entries) into `dir` and point the project's
 /// footage at the files. Returns the files written.
 fn extract_footage(s: &Session, proj: &mut Project, entries: &[(String, Vec<u8>)], dir: &str) -> Result<Vec<String>> {
-    let mut written = std::collections::HashMap::new();
-    let mut used = std::collections::HashSet::new();
-    for (k, v) in entries.iter().filter(|(k, _)| k.starts_with("media/")) {
-        // `media/<item>/<file>` → one folder; a name another item took gets the item's id.
-        let file = base_name(k);
-        let item = k.trim_start_matches("media/").split('/').next().unwrap_or("0");
-        let name = if used.insert(file.clone()) { file } else { format!("{item}-{file}") };
-        let out = format!("{dir}/{name}");
-        s.services.store_file(&out, v).map_err(|e| EngineError::Other(format!("cannot write {out}: {e}")))?;
-        if let Some(imp) = &s.importer {
-            imp.register(&out, v);
-        }
-        written.insert(k.clone(), out);
-    }
+    let written = crate::template_media::extract(s, entries, dir, true)?;
     for it in proj.items.values_mut() {
         if let effectcraft_project::ItemKind::Footage(f) = &mut it.kind {
             if let Some(w) = written.get(&f.path) {
@@ -942,6 +929,15 @@ pub fn specs() -> Vec<CommandSpec> {
 mod tests {
     use super::*;
     use crate::config::{DirConfig, MemoryConfig};
+
+    #[test]
+    fn thumbnail_text_rejects_non_ascii_and_invalid_hex() {
+        let length = THUMB_W * THUMB_H * 6;
+        let non_ascii = format!("界{}", "0".repeat(length - 3));
+        assert!(decode_thumb(&non_ascii).is_none());
+        assert!(decode_thumb(&"g".repeat(length)).is_none());
+        assert_eq!(decode_thumb(&"aF".repeat(length / 2)).unwrap(), vec![175; length / 2]);
+    }
 
     #[test]
     fn every_builtin_builds_with_controls_and_renders() {

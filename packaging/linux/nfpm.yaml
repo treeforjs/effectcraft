@@ -1,6 +1,6 @@
 # .deb and .rpm packages (nfpm: https://nfpm.goreleaser.com). Run by package.sh, which stages
 # the file tree, substitutes its path for ${STAGE} (nfpm doesn't expand env vars in `src`) and
-# exports VERSION and NFPM_ARCH.
+# exports VERSION, NFPM_ARCH and GLIBC_MIN_VERSION from the staged ELF files.
 #
 #   nfpm package -f packaging/linux/nfpm.yaml -p deb -t dist/release/
 name: effectcraft
@@ -23,16 +23,18 @@ description: |-
   (H.264, HEVC, AV1, ProRes, WebM, image sequences); GPU compositing (wgpu).
   Includes effectcraft-cli, a headless renderer, command runner and MCP server.
 
-# The binaries link only glibc and libgcc_s directly. Windowing (X11/Wayland, xkbcommon) and the
+# The binaries link glibc, libgcc_s and desktop ALSA directly. Windowing (X11/Wayland, xkbcommon) and the
 # GPU (Vulkan, EGL/GL) are loaded at runtime, so they are dependencies/recommendations here
 # rather than ELF NEEDED entries.
 overrides:
   deb:
     depends:
-      - libc6 (>= 2.35)
+      - libc6 (>= ${GLIBC_MIN_VERSION})
       - libgcc-s1
       - libxkbcommon0
-      - libvulkan1 | libegl1
+      - libxkbcommon-x11-0
+      - libvulkan1
+      - libegl1
       - libasound2 | libasound2t64
     recommends:
       - libwayland-client0
@@ -42,11 +44,15 @@ overrides:
       - libxi6
       - libxrandr2
       - mesa-vulkan-drivers
+      - libegl-mesa0
+      - libgl1-mesa-dri
       - xdg-desktop-portal
+      - xdg-desktop-portal-gtk
   rpm:
     depends:
       - libxkbcommon
-      - (vulkan-loader or libglvnd-egl)
+      - vulkan-loader
+      - libglvnd-egl
       - alsa-lib
     recommends:
       - libwayland-client

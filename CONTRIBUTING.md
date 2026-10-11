@@ -42,5 +42,5 @@ cargo xtask ci                           # what every commit must pass
 
 ## Talk to us
 
-Questions, ideas and bug reports are welcome on [Discord](https://discord.gg/artcraft) and in
+Questions, ideas and bug reports are welcome in
 GitHub issues.

@@ -1,3 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-effectcraft-project">
+    <comment>EffectCraft project</comment>
+    <glob pattern="*.ecproj"/>
+    <glob pattern="*.ecprojx"/>
+    <icon name="ai.storyteller.effectcraft"/>
+  </mime-type>
 </mime-info>

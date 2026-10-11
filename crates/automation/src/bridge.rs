@@ -1,5 +1,5 @@
 //! Blocking client for the desktop app's JSON-lines control channel (`docs/control-protocol.md`).
-//! One persistent loopback connection, reconnected once if the app went away.
+//! One persistent loopback connection; failed calls are never automatically replayed.
 
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpStream, ToSocketAddrs};
@@ -50,50 +50,77 @@ impl BridgeClient {
 
     /// Call a control method; returns the reply's `result`, or the app's `error` as [`Error::App`].
     pub fn call(&mut self, method: &str, params: Value) -> Result<Value> {
-        let mut last = Error::Bridge("not attempted".into());
-        for attempt in 0..2 {
-            if self.conn.is_none() {
-                self.conn = Some(self.connect()?);
+        if self.conn.is_none() {
+            self.conn = Some(self.connect()?);
+        }
+        let id = self.next_id;
+        self.next_id += 1;
+        let Some((r, w)) = self.conn.as_mut() else {
+            return Err(Error::Bridge(format!("not connected to {}", self.addr)));
+        };
+        let line = format!("{}\n", json!({"id": id, "method": method, "params": params}));
+        let res: Result<Value> = (|| {
+            w.write_all(line.as_bytes()).map_err(|e| Error::Bridge(e.to_string()))?;
+            let mut buf = String::new();
+            match r.read_line(&mut buf) {
+                Ok(0) => return Err(Error::Bridge("connection closed by the app".into())),
+                Ok(_) => {}
+                Err(e) if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => {
+                    return Err(Error::Bridge(format!("no reply to `{method}` within {}s (is the app window running?)", READ_TIMEOUT.as_secs())));
+                }
+                Err(e) => return Err(Error::Bridge(e.to_string())),
             }
-            let id = self.next_id;
-            self.next_id += 1;
-            let Some((r, w)) = self.conn.as_mut() else { continue };
-            let line = format!("{}\n", json!({"id": id, "method": method, "params": params}));
-            // `Ok(Err(_))`: the connection is dead before a reply (safe to resend once);
-            // `Err(_)`: a timeout or bad reply (never resent: the app may have run the request).
-            let res = (|| -> Result<std::result::Result<Value, Error>> {
-                if let Err(e) = w.write_all(line.as_bytes()) {
-                    return Ok(Err(Error::Bridge(e.to_string())));
-                }
-                let mut buf = String::new();
-                match r.read_line(&mut buf) {
-                    Ok(0) => return Ok(Err(Error::Bridge("connection closed by the app".into()))),
-                    Ok(_) => {}
-                    Err(e) if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => {
-                        return Err(Error::Bridge(format!("no reply to `{method}` within {}s (is the app window running?)", READ_TIMEOUT.as_secs())));
-                    }
-                    Err(e) => return Ok(Err(Error::Bridge(e.to_string()))),
-                }
-                serde_json::from_str(&buf).map(Ok).map_err(|e| Error::Bridge(format!("bad reply: {e}")))
-            })();
-            match res {
-                Ok(Ok(v)) if v.get("ok").and_then(Value::as_bool) == Some(true) => return Ok(v.get("result").cloned().unwrap_or(Value::Null)),
-                Ok(Ok(v)) => return Err(Error::App(v.get("error").and_then(Value::as_str).unwrap_or("error").to_string())),
-                Ok(Err(e)) => {
-                    // Stale connection (app restarted): reconnect and resend once.
-                    self.conn = None;
-                    last = e;
-                    if attempt == 1 {
-                        break;
-                    }
-                }
-                Err(e) => {
-                    // The stream may still deliver the late reply: start fresh next call.
-                    self.conn = None;
-                    return Err(e);
-                }
+            serde_json::from_str(&buf).map_err(|e| Error::Bridge(format!("bad reply: {e}")))
+        })();
+        match res {
+            Ok(v) if v.get("ok").and_then(Value::as_bool) == Some(true) => Ok(v.get("result").cloned().unwrap_or(Value::Null)),
+            Ok(v) => Err(Error::App(v.get("error").and_then(Value::as_str).unwrap_or("error").to_string())),
+            Err(e) => {
+                // EOF or a write/read failure does not prove that the app skipped the command.
+                // Reconnect only for the caller's next explicit request, never replay this one.
+                self.conn = None;
+                Err(Error::Bridge(format!("{e}; request outcome is unknown, inspect app state before retrying")))
             }
         }
-        Err(last)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::TcpListener;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[test]
+    fn a_lost_reply_never_replays_a_mutation() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let mut client = BridgeClient::new(&listener.local_addr().unwrap().to_string()).unwrap();
+        let applied = Arc::new(AtomicUsize::new(0));
+        let counter = applied.clone();
+        let server = std::thread::spawn(move || {
+            for index in 0..2 {
+                let (stream, _) = listener.accept().unwrap();
+                stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+                let mut reader = BufReader::new(stream);
+                let mut line = String::new();
+                reader.read_line(&mut line).unwrap();
+                let request: Value = serde_json::from_str(&line).unwrap();
+                if request["method"] == "engine.execute" {
+                    counter.fetch_add(1, Ordering::SeqCst);
+                }
+                if index == 1 {
+                    let reply = json!({"id": request["id"], "ok": true, "result": {"applied": counter.load(Ordering::SeqCst)}});
+                    writeln!(reader.get_mut(), "{reply}").unwrap();
+                }
+                // The first mutation committed, but its reply was lost as the socket closed.
+            }
+        });
+        let error = client.call("engine.execute", json!({"command": "layer.newSolid", "params": {}})).unwrap_err();
+        assert!(error.to_string().contains("outcome is unknown"), "{error}");
+        assert_eq!(applied.load(Ordering::SeqCst), 1);
+        assert_eq!(client.call("ui.inspect", json!({})).unwrap(), json!({"applied": 1}));
+        server.join().unwrap();
+        assert_eq!(applied.load(Ordering::SeqCst), 1);
     }
 }

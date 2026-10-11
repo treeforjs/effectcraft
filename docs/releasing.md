@@ -78,6 +78,12 @@ RHEL 10. Building on a newer image would silently raise that floor. `packaging/l
 builds the AppImage, `.deb`, `.rpm` and tarball; the workflow then runs the AppImage's
 `--version` as a smoke test.
 
+The `.deb` now declares the highest GLIBC symbol version required by its staged desktop and
+CLI binaries, including local `--skip-build` inputs. Build on the oldest intended target.
+The [Ubuntu compatibility workflow](../.github/workflows/ubuntu.yml) checks package installation,
+public resource permissions, project associations, CLI media output and a software-rendered window
+on Ubuntu 24.04 and 26.04 x86_64.
+
 ### Linux: AppImage updates and Flatpak
 
 Each AppImage embeds update information

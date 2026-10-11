@@ -1,5 +1,6 @@
 # Roadmap
 
+- 2026-10-11: Project and template inputs now bound cyclic composition traversal and identifier merges, reject unsafe or conflicting media extraction destinations before writes, and keep existing footage intact. Atomic saves use private, exclusive staging files; thumbnail and automation-input regressions cover malformed data. [Ubuntu LTS packaging and smoke checks](docs/ubuntu.md) and [Windows GPU setup](docs/windows-gpu.md) document the supported setup and remaining hardware validation work. Active Discord links have been removed.
 - 2026-10-09: Settings ▸ General ▸ Language now translates the interface below the menu bar as well: panels, dialogs, buttons and tooltips read their text through `crates/ui-egui/src/i18n/ui.rs`, keyed by the English source string. Simplified and Traditional Chinese are complete (384 strings); Japanese rows can follow in the same file. A test fails when a converted panel gains a hard-coded string, and another keeps the catalog free of unused rows.
 - 2026-10-08: `effectcraft-cli render --out` resolves a relative path against the working directory, like `--project` (it used the project's folder, which doubled a path that already named it). Render Queue outputs set in a project are unchanged.
 - 2026-10-08: Long-press a grouped toolbar button to choose its tools, including Horizontal/Vertical Type; releasing the hold keeps the menu open. Existing point/paragraph text creation is unchanged.
@@ -69,4 +70,4 @@ In priority order (details and "done" criteria in [docs/gaps.md](docs/gaps.md)):
 | G8 | Plug-in ecosystem on our WebAssembly plug-in API | After Effects plug-ins can't run here |
 | G9 | Localisation, accessibility, user documentation | Reach beyond English-speaking power users |
 
-Come tell us what matters most to you on [Discord](https://discord.gg/artcraft).
+Share feedback through [GitHub issues](https://github.com/storytold/effectcraft/issues).

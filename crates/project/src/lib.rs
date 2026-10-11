@@ -15,7 +15,7 @@ pub mod sequence;
 pub mod styles;
 pub mod tracking;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 pub use effectcraft_color::ColorSpace;
@@ -1254,24 +1254,45 @@ impl Project {
     }
     /// Whether comp `inner` is (transitively) nested inside comp `outer` (to prevent cycles).
     pub fn comp_contains(&self, outer: ItemId, inner: ItemId) -> bool {
-        if outer == inner {
-            return true;
-        }
-        let Some(c) = self.comp(outer) else { return false };
-        c.layers.iter().any(|l| matches!(l.source, LayerSource::Comp { item } if self.comp_contains(item, inner)))
-    }
-    /// Make sure `next_id` exceeds every id in the project (after loading or merging).
-    pub fn fix_next_id(&mut self) {
-        let mut m = self.next_id;
-        for (id, it) in &self.items {
-            m = m.max(id.0 + 1);
-            if let ItemKind::Comp(c) = &it.kind {
-                for l in &c.layers {
-                    m = m.max(l.id.0 + 1).max(l.props.max_uid() + 1);
+        let mut pending = vec![outer];
+        let mut seen = BTreeSet::new();
+        while let Some(id) = pending.pop() {
+            if id == inner {
+                return true;
+            }
+            if !seen.insert(id) {
+                continue;
+            }
+            if let Some(comp) = self.comp(id) {
+                for layer in &comp.layers {
+                    if let LayerSource::Comp { item } = layer.source {
+                        pending.push(item);
+                    }
                 }
             }
         }
-        self.next_id = m;
+        false
+    }
+    fn max_allocated_id(&self) -> u64 {
+        let mut m = 0;
+        for (id, it) in &self.items {
+            m = m.max(id.0).max(it.id.0);
+            if let ItemKind::Comp(c) = &it.kind {
+                for l in &c.layers {
+                    m = m.max(l.id.0).max(l.props.max_uid());
+                }
+                if let Some(eg) = &c.essential {
+                    for control in eg.flat() {
+                        m = m.max(control.id);
+                    }
+                }
+            }
+        }
+        self.render_queue.iter().fold(m, |m, item| m.max(item.id))
+    }
+    /// Make sure `next_id` exceeds every allocated id (after loading or merging).
+    pub fn fix_next_id(&mut self) {
+        self.next_id = self.next_id.max(self.max_allocated_id().saturating_add(1));
     }
     /// Whether `other` holds the same content. An allocated id counts (an edit may hand it out
     /// beyond the project, so it must stay taken). Shared compositions compare by pointer first,
@@ -1321,6 +1342,11 @@ impl Project {
         let mut p: Project = serde_json::from_str(s).map_err(|e| ProjectError::Invalid(e.to_string()))?;
         if p.schema > SCHEMA_VERSION {
             return Err(ProjectError::Invalid(format!("project schema {} is newer than this version supports ({SCHEMA_VERSION})", p.schema)));
+        }
+        // Imported counters must leave ample room for subsequent edits and template merges.
+        // A file can otherwise overflow either while repairing its counter or on the first edit.
+        if p.next_id > u64::MAX / 2 || p.max_allocated_id() > u64::MAX / 2 {
+            return Err(ProjectError::Invalid("project identifiers leave insufficient room for editing".into()));
         }
         p.fix_next_id();
         Ok(p)

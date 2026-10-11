@@ -703,78 +703,97 @@ pub fn with_overrides(project: &Project, comp: ItemId, overrides: &[Override]) -
 /// Shift every id (items, layers, property uids, Essential Graphics controls) of `p` by
 /// `offset`, keeping all references consistent: used when merging a template project into
 /// another project.
-pub fn offset_ids(p: &mut Project, offset: u64) {
+pub fn offset_ids(p: &mut Project, offset: u64) -> Result<(), crate::ProjectError> {
+    let mut shifted = p.clone();
+    offset_ids_in_place(&mut shifted, offset)?;
+    *p = shifted;
+    Ok(())
+}
+
+fn offset_ids_in_place(p: &mut Project, offset: u64) -> Result<(), crate::ProjectError> {
+    let next = shifted(p.next_id, offset)?;
     let items = std::mem::take(&mut p.items);
     for (_, mut it) in items {
-        it.id = ItemId(it.id.0 + offset);
-        it.parent = it.parent.map(|f| ItemId(f.0 + offset));
+        it.id = ItemId(shifted(it.id.0, offset)?);
+        it.parent = it.parent.map(|f| shifted(f.0, offset).map(ItemId)).transpose()?;
         if let ItemKind::Comp(c) = &mut it.kind {
             let c = std::sync::Arc::make_mut(c);
             for l in &mut c.layers {
-                offset_layer(l, offset);
+                offset_layer(l, offset)?;
             }
             if let Some(eg) = &mut c.essential {
-                fn go(v: &mut [EgControl], o: u64) {
+                fn go(v: &mut [EgControl], o: u64) -> Result<(), crate::ProjectError> {
                     for c in v {
-                        c.id += o;
+                        c.id = shifted(c.id, o)?;
                         match &mut c.kind {
                             EgKind::Property { layer, prop, links } => {
-                                *layer = LayerId(layer.0 + o);
-                                *prop += o;
+                                *layer = LayerId(shifted(layer.0, o)?);
+                                *prop = shifted(*prop, o)?;
                                 for k in links {
-                                    k.layer = LayerId(k.layer.0 + o);
-                                    k.prop += o;
+                                    k.layer = LayerId(shifted(k.layer.0, o)?);
+                                    k.prop = shifted(k.prop, o)?;
                                 }
                             }
-                            EgKind::Mirror { of } => *of += o,
-                            EgKind::Media { layer } => *layer = LayerId(layer.0 + o),
-                            EgKind::Group { children } => go(children, o),
+                            EgKind::Mirror { of } => *of = shifted(*of, o)?,
+                            EgKind::Media { layer } => *layer = LayerId(shifted(layer.0, o)?),
+                            EgKind::Group { children } => go(children, o)?,
                             EgKind::Comment { .. } => {}
                         }
                     }
+                    Ok(())
                 }
-                go(&mut eg.controls, offset);
+                go(&mut eg.controls, offset)?;
             }
         }
         p.items.insert(it.id, it);
     }
     p.render_queue.clear();
-    p.next_id += offset;
+    p.next_id = next;
+    Ok(())
 }
 
-fn offset_layer(l: &mut Layer, o: u64) {
-    l.id = LayerId(l.id.0 + o);
-    l.parent = l.parent.map(|x| LayerId(x.0 + o));
+fn shifted(id: u64, offset: u64) -> Result<u64, crate::ProjectError> {
+    id.checked_add(offset)
+        .filter(|id| *id <= u64::MAX / 2)
+        .ok_or_else(|| crate::ProjectError::Invalid("template identifiers leave insufficient room for editing".into()))
+}
+
+fn offset_layer(l: &mut Layer, o: u64) -> Result<(), crate::ProjectError> {
+    l.id = LayerId(shifted(l.id.0, o)?);
+    l.parent = l.parent.map(|x| shifted(x.0, o).map(LayerId)).transpose()?;
     if let Some(tm) = &mut l.track_matte {
-        tm.layer = LayerId(tm.layer.0 + o);
+        tm.layer = LayerId(shifted(tm.layer.0, o)?);
     }
     match &mut l.source {
-        LayerSource::Footage { item } | LayerSource::Comp { item } | LayerSource::Solid { item } | LayerSource::Model { item } => *item = ItemId(item.0 + o),
+        LayerSource::Footage { item } | LayerSource::Comp { item } | LayerSource::Solid { item } | LayerSource::Model { item } => {
+            *item = ItemId(shifted(item.0, o)?)
+        }
         _ => {}
     }
-    fn group(g: &mut PropGroup, o: u64, essential_parent: bool) {
-        g.uid += o;
+    fn group(g: &mut PropGroup, o: u64, essential_parent: bool) -> Result<(), crate::ProjectError> {
+        g.uid = shifted(g.uid, o)?;
         if let GroupKind::Essential { overridden } = &mut g.kind {
             for u in overridden.iter_mut() {
-                *u += o;
+                *u = shifted(*u, o)?;
             }
         }
         let is_essential = matches!(g.kind, GroupKind::Essential { .. }) || essential_parent;
         for c in &mut g.children {
             match c {
                 Node::Prop(p) => {
-                    p.uid += o;
-                    let fix = |v: &mut Value| {
+                    p.uid = shifted(p.uid, o)?;
+                    let fix = |v: &mut Value| -> Result<(), crate::ProjectError> {
                         if let Value::Layer(Some(id)) = v {
-                            *id += o;
+                            *id = shifted(*id, o)?;
                         }
+                        Ok(())
                     };
-                    fix(&mut p.value);
+                    fix(&mut p.value)?;
                     for k in &mut p.keys {
-                        fix(&mut k.value);
+                        fix(&mut k.value)?;
                     }
                     if is_essential && control_of(&p.match_id).is_some() {
-                        p.match_id = match_id(control_of(&p.match_id).unwrap_or(0) + o);
+                        p.match_id = match_id(shifted(control_of(&p.match_id).unwrap_or(0), o)?);
                         // Media replacement values are item ids.
                         if matches!(p.ui, ParamUi::Hidden)
                             && let Value::Scalar(x) = &mut p.value
@@ -785,14 +804,15 @@ fn offset_layer(l: &mut Layer, o: u64) {
                 }
                 Node::Group(sub) => {
                     if is_essential && let Some(id) = control_of(&sub.match_id) {
-                        sub.match_id = match_id(id + o);
+                        sub.match_id = match_id(shifted(id, o)?);
                     }
-                    group(sub, o, is_essential);
+                    group(sub, o, is_essential)?;
                 }
             }
         }
+        Ok(())
     }
-    group(&mut l.props, o, false);
+    group(&mut l.props, o, false)
 }
 
 /// The items `comp` needs (itself, nested comps, footage, solids), transitively.

@@ -63,6 +63,11 @@ The most important missing piece: it turns every other estimate here into a meas
 
 ### G2. Real-user reliability on every platform
 
+- The 11 October Ubuntu audit installed the built `.deb` on 24.04 and 26.04 as an unprivileged
+  user. All four X11/Xvfb and native Wayland/Weston runs passed with default Vulkan llvmpipe:
+  project edit/save/reopen, screenshots, PNG rendering and H.264 encode/import/decode. MIME,
+  linked-library and resource-permission checks passed too. [Ubuntu setup and limits](ubuntu.md)
+  distinguish this software-rendered evidence from physical GPU, audio and Windows validation.
 - Fix user issues as they come in, each with a regression test, and answer the reporter (#41–#47
   and #63–#68 are handled, as are the Windows report that the font menus missed installed fonts
   and the reports of 6 October, #85, #88, #89, #93, #103, #106 and #117, and of 7 October, #198,
@@ -139,6 +144,17 @@ The most important missing piece: it turns every other estimate here into a meas
 
 ### G3. Stability and a green main
 
+- The 11 October input audit adds regressions for cyclic/deep composition graphs, exhausted
+  identifiers and template merge overflow, malformed thumbnail text, excessive synthetic input,
+  and template extraction traversal, symlinks, duplicate/conflicting destinations and existing
+  footage. Template destinations are checked before writes; atomic saves reserve an exclusive
+  staging file (private Unix permissions) so overlapping saves and legacy `.tmp` symlinks
+  cannot corrupt it.
+- The desktop bridge no longer resends commands after a lost reply. A loopback regression
+  applies an edit and drops its reply, then verifies that the edit ran once and a subsequent
+  explicit state query reconnects normally.
+- The 11 October audit gate passed on Rust 1.95: 2,487 native tests passed (25 ignored),
+  strict workspace Clippy, formatting, layer/asset checks and all 32 required WASM crates.
 - Keep `cargo xtask ci` green on the current stable toolchain. A toolchain release that breaks the
   gate is a P0.
 - Fuzz the inputs we don't control: project files, imported media and documents, expressions,

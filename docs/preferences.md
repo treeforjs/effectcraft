@@ -1,5 +1,8 @@
 # Settings, keyboard shortcuts, auto-save and crash recovery
 
+For platform graphics installation and diagnostics, see [Ubuntu](ubuntu.md) and
+[Windows GPU setup](windows-gpu.md).
+
 ## Settings (Preferences)
 
 EffectCraft ▸ Settings (macOS) or Edit ▸ Preferences (Windows/Linux), `Cmd+Alt+;`. The dialog has

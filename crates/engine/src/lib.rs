@@ -41,6 +41,7 @@ mod session_settings;
 pub mod shortcuts;
 pub mod storage;
 pub mod sysinfo;
+mod template_media;
 pub mod templates;
 pub mod tracking;
 pub mod vector;
@@ -106,7 +107,7 @@ pub trait Services: Send + Sync {
     /// goes to browser storage only).
     fn store_file(&self, path: &str, data: &[u8]) -> std::io::Result<()> {
         if let Some(d) = std::path::Path::new(path).parent().filter(|d| !d.as_os_str().is_empty()) {
-            let _ = std::fs::create_dir_all(d);
+            std::fs::create_dir_all(d)?;
         }
         self.write_file(path, data)
     }

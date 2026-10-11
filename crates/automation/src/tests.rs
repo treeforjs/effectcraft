@@ -991,7 +991,6 @@ fn render_progress_and_cancel() {
     assert!(!b.exists(), "partial output deleted");
     assert!(std::path::Path::new(&a).exists(), "completed earlier queue item is retained");
     assert_eq!(v["items"][1]["statusLabel"], "User Stopped", "{v}");
-    drop(send);
     drop(in_w);
     server.join().unwrap();
     let _ = std::fs::remove_dir_all(&dir);

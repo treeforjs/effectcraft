@@ -11,6 +11,9 @@ effectcraft --control 9877        # or EFFECTCRAFT_CONTROL_PORT=9877
 - **Request:** `{"id": 1, "method": "engine.execute", "params": {...}}` (`id` is echoed back, `params`
   defaults to `{}`).
 - **Reply:** `{"id": 1, "ok": true, "result": ...}` or `{"id": 1, "ok": false, "error": "message"}`.
+- The CLI/MCP bridge never automatically replays a failed request. If a reply is lost, the
+  command may already have changed the project: inspect the app state before retrying. The
+  next explicit request reconnects.
 - Requests run on the UI thread between frames. Input methods (`ui.click`, `ui.key` and similar)
   reply after the synthetic input has been processed. Methods that need an element that isn't drawn
   yet are retried for a few frames. A request times out after 60 s.
@@ -70,9 +73,9 @@ Points are logical window coordinates. A target is `{id}` (the element's centre;
 
 | Method | Params |
 |---|---|
-| `ui.click` | `{id \| x,y, button?: left\|right\|middle, count?, modifiers?}` |
+| `ui.click` | `{id \| x,y, button?: left\|right\|middle, count? (at most 64), modifiers?}` |
 | `ui.move` | `{id \| x,y}` |
-| `ui.drag` | `{from: target, to: target, steps? (12), modifiers?}`: press, move, release |
+| `ui.drag` | `{from: target, to: target, steps? (12, at most 4096), modifiers?}`: press, move, release |
 | `ui.scroll` | `{id \| x,y, dx, dy}` |
 | `ui.key` | `{key}`, for example `Space`, `F9`, `Cmd+Z`, `Cmd+Shift+Z`, `PageDown`, `Escape` |
 | `ui.type` | `{text}`: text input into the focused field |

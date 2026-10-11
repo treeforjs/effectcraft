@@ -65,6 +65,10 @@ fn parse_args(args: impl IntoIterator<Item = String>, env_port: Option<String>) 
     Some(out)
 }
 
+fn is_project_file(path: &str) -> bool {
+    std::path::Path::new(path).extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("ecproj") || e.eq_ignore_ascii_case("ecprojx"))
+}
+
 fn main() -> eframe::Result {
     // Help ▸ Enable Logging writes through this logger; warnings feed the compatibility report.
     effectcraft_engine::logging::install();
@@ -143,7 +147,7 @@ fn main() -> eframe::Result {
             }
             session.load_settings();
             let recovery = if control_port.is_none() { session.begin_recovery() } else { None };
-            let project = files.iter().find(|f| f.ends_with(".ecproj")).cloned();
+            let project = files.iter().find(|f| is_project_file(f)).cloned();
             if let Some(p) = project {
                 if let Err(e) = session.execute("file.open", json!({"path": p})) {
                     eprintln!("effectcraft: {e}");
@@ -151,7 +155,7 @@ fn main() -> eframe::Result {
             } else if demo {
                 let _ = session.execute("file.openDemoProject", json!({}));
             }
-            let media: Vec<String> = files.iter().filter(|f| !f.ends_with(".ecproj")).cloned().collect();
+            let media: Vec<String> = files.iter().filter(|f| !is_project_file(f)).cloned().collect();
             if !media.is_empty()
                 && let Err(e) = session.execute("file.import", json!({"paths": media}))
             {
@@ -335,6 +339,14 @@ fn disable_app_nap() {
 #[cfg(test)]
 mod tests {
     use super::{Args, parse_args};
+
+    #[test]
+    fn desktop_project_dispatch_accepts_xml_and_uppercase_extensions() {
+        for name in ["project.ecproj", "PROJECT.ECPROJ", "project.ecprojx", "PROJECT.ECPROJX"] {
+            assert!(super::is_project_file(name));
+        }
+        assert!(!super::is_project_file("footage.mov"));
+    }
 
     fn parse(args: &[&str]) -> Option<Args> {
         parse_args(args.iter().map(|a| a.to_string()), None)

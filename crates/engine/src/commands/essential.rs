@@ -876,6 +876,7 @@ fn export_template(s: &mut Session, p: &Value) -> Result<Value> {
 /// Read a template's manifest and project (with media paths still archive-relative).
 pub fn read_template(bytes: &[u8]) -> std::result::Result<(Value, Project, Vec<(String, Vec<u8>)>), String> {
     let entries = effectcraft_lottie::zip::read_stored(bytes);
+    crate::template_media::validate(&entries)?;
     let get = |n: &str| entries.iter().find(|(k, _)| k == n).map(|(_, v)| v.clone());
     let manifest: Value =
         serde_json::from_slice(&get("manifest.json").ok_or("not an EffectCraft template (no manifest.json)")?).map_err(|e| format!("manifest.json: {e}"))?;
@@ -898,23 +899,18 @@ fn import_template(s: &mut Session, p: &Value) -> Result<Value> {
     let (manifest, mut sub, entries) = read_template(&bytes).map_err(|e| bad(C, e))?;
     let name = manifest.get("name").and_then(Value::as_str).unwrap_or("Template").to_string();
     let tcomp = manifest.get("comp").and_then(Value::as_u64).map(ItemId).ok_or_else(|| bad(C, "manifest has no `comp`"))?;
+    if sub.comp(tcomp).is_none() {
+        return Err(bad(C, "template manifest does not name a composition"));
+    }
+    let base = s.project.next_id;
+    essential::offset_ids(&mut sub, base)?;
+    let new_comp = ItemId(tcomp.0.checked_add(base).ok_or_else(|| bad(C, "template composition identifier overflow"))?);
     // Media next to the template: `<dir>/<stem> Media/<item>/<file>`.
     let pp = std::path::Path::new(&path);
     let dir = pp.parent().map(|d| d.to_path_buf()).unwrap_or_default();
     let stem = pp.file_stem().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "Template".into());
     let media_dir = dir.join(format!("{stem} Media"));
-    let mut written = std::collections::HashMap::new();
-    for (k, v) in entries.iter().filter(|(k, _)| k.starts_with("media/")) {
-        let rel = k.trim_start_matches("media/");
-        let out = media_dir.join(rel);
-        if let Some(parent) = out.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        let out_s = out.to_string_lossy().to_string();
-        if s.services.write_file(&out_s, v).is_ok() {
-            written.insert(k.clone(), out_s);
-        }
-    }
+    let written = crate::template_media::extract(s, &entries, &media_dir.to_string_lossy(), false)?;
     for it in sub.items.values_mut() {
         if let ItemKind::Footage(f) = &mut it.kind {
             if let Some(w) = written.get(&f.path) {
@@ -928,9 +924,6 @@ fn import_template(s: &mut Session, p: &Value) -> Result<Value> {
         }
     }
     let target = if b_p(p, "addToComp") == Some(false) { None } else { comp_id(s, p).ok() };
-    let base = s.project.next_id;
-    essential::offset_ids(&mut sub, base);
-    let new_comp = ItemId(tcomp.0 + base);
     let ids = s.edit("Import Template", None, |proj, st| {
         let folder = proj.add_item(&name, effectcraft_color::Label::Yellow, None, ItemKind::Folder);
         let mut ids = vec![];

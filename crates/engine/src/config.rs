@@ -136,7 +136,7 @@ impl ConfigStore for DirConfig {
     }
 }
 
-/// The temporary file an atomic write of `path` goes through.
+/// The legacy temporary-file name. Atomic writes now exclusively create unique staging files.
 pub fn temp_path(path: &Path) -> PathBuf {
     let mut name = path.file_name().map(|n| n.to_os_string()).unwrap_or_default();
     name.push(".tmp");
@@ -147,21 +147,57 @@ pub fn temp_path(path: &Path) -> PathBuf {
 /// rename it over `path`. A crash at any point leaves either the old file or the new one, never a
 /// torn file.
 pub fn atomic_write(path: &Path, data: &[u8]) -> std::io::Result<()> {
-    atomic_write_with(path, data, |tmp, data| {
+    atomic_write_with(path, data, |file, data| {
         use std::io::Write;
-        let mut f = std::fs::File::create(tmp)?;
-        f.write_all(data)?;
-        f.sync_all()
+        file.write_all(data)
     })
 }
 
 /// [`atomic_write`] with an injectable temp-file writer (tests simulate a crash mid-write). A
 /// failed write removes the temporary file and leaves `path` untouched.
-pub fn atomic_write_with(path: &Path, data: &[u8], write: impl FnOnce(&Path, &[u8]) -> std::io::Result<()>) -> std::io::Result<()> {
-    let tmp = temp_path(path);
-    if let Err(e) = write(&tmp, data) {
+pub fn atomic_write_with(path: &Path, data: &[u8], write: impl FnOnce(&mut std::fs::File, &[u8]) -> std::io::Result<()>) -> std::io::Result<()> {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let (tmp, mut file) = {
+        let mut reserved = None;
+        for _ in 0..128 {
+            let mut name = path.file_name().unwrap_or_default().to_os_string();
+            name.push(format!(".{}-{}.tmp", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)));
+            let tmp = path.with_file_name(name);
+            let mut options = std::fs::OpenOptions::new();
+            options.write(true).create_new(true);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::OpenOptionsExt;
+                options.mode(0o600);
+            }
+            match options.open(&tmp) {
+                Ok(file) => {
+                    reserved = Some((tmp, file));
+                    break;
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(e) => return Err(e),
+            }
+        }
+        reserved.ok_or_else(|| std::io::Error::other("cannot reserve a temporary save file"))?
+    };
+    let result = (|| {
+        write(&mut file, data)?;
+        // Keep staging private while bytes are written; preserve an existing document's mode
+        // only once its replacement is complete. Never copy permissions through a symlink.
+        if let Ok(metadata) = std::fs::symlink_metadata(path)
+            && metadata.is_file()
+        {
+            file.set_permissions(metadata.permissions())?;
+        }
+        file.sync_all()
+    })();
+    drop(file);
+    let result = result.and_then(|()| std::fs::rename(&tmp, path));
+    if result.is_err() {
+        // Only remove the exclusively created file belonging to this invocation.
         let _ = std::fs::remove_file(&tmp);
-        return Err(e);
     }
-    std::fs::rename(&tmp, path)
+    result
 }

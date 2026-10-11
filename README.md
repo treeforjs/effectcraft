@@ -27,10 +27,6 @@
 </p>
 
 <p align="center">
-  <a href="https://discord.gg/artcraft"><img alt="Join the ArtCraft community on Discord" src="https://img.shields.io/badge/Join%20us%20on%20Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" height="40"></a>
-</p>
-
-<p align="center">
   <a href="https://getartcraft.com/apps/effectcraft"><b>EffectCraft on getartcraft.com</b></a> ·
   <a href="https://getartcraft.com/">ArtCraft</a> ·
   <a href="https://getartcraft.com/apps">All Crafting Apps</a>
@@ -44,7 +40,7 @@
 
 > [!NOTE]
 > **ArtCraft is a community of artists from all walks of life.** Digital, generative, music,
-> games &mdash; if you make things, you're one of us. **[Come say hi on Discord](https://discord.gg/artcraft).**
+> games &mdash; if you make things, you're one of us.
 
 <p align="center">
   <a href="#what-effectcraft-is">What it is</a> ·
@@ -258,6 +254,9 @@ send us right now.
 
 ### Windows
 
+For RTX PRO Blackwell, GeForce RTX and Intel integrated graphics, see the
+[Windows GPU setup guide](docs/windows-gpu.md).
+
 | Build | Installer | Portable |
 |---|---|---|
 | x64 (64-bit Intel/AMD) | `effectcraft-<ver>-windows-x64.msi` | `effectcraft-<ver>-windows-x64-portable.zip` |
@@ -275,9 +274,13 @@ Installers and executables are code-signed.
 
 ### Linux
 
+Ubuntu 24.04 / 26.04 LTS x86_64 users: install the `.deb` with
+`sudo apt install ./effectcraft-<ver>-linux-x86_64.deb`. See the [Ubuntu guide](docs/ubuntu.md)
+for source builds, graphics drivers, audio dependencies and desktop troubleshooting.
+
 | Format | x86_64 | aarch64 (ARM64) | Notes |
 |---|---|---|---|
-| AppImage | `effectcraft-<ver>-linux-x86_64.AppImage` | `effectcraft-<ver>-linux-aarch64.AppImage` | Runs anywhere; updates itself with [AppImageUpdate](https://github.com/AppImageCommunity/AppImageUpdate) (`.zsync` files) |
+| AppImage | `effectcraft-<ver>-linux-x86_64.AppImage` | `effectcraft-<ver>-linux-aarch64.AppImage` | glibc 2.35+; updates itself with [AppImageUpdate](https://github.com/AppImageCommunity/AppImageUpdate) (`.zsync` files) |
 | Flatpak | `effectcraft-<ver>-linux-x86_64.flatpak` | `effectcraft-<ver>-linux-aarch64.flatpak` | Sandboxed; `flatpak install --user <file>` |
 | Debian/Ubuntu | `effectcraft-<ver>-linux-x86_64.deb` | `effectcraft-<ver>-linux-aarch64.deb` | |
 | Fedora/RHEL/openSUSE | `effectcraft-<ver>-linux-x86_64.rpm` | `effectcraft-<ver>-linux-aarch64.rpm` | |
@@ -315,21 +318,16 @@ And [**ArtCraft**](https://getartcraft.com/) itself, our AI image and video stud
 
 <br>
 
-<p align="center">
-  <a href="https://discord.gg/artcraft"><img alt="Join the ArtCraft community on Discord" src="https://img.shields.io/badge/Join%20us%20on%20Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" height="40"></a>
-</p>
-
 <h3 align="center">Come make things with us</h3>
 
 <p align="center">
-  Our Discord is where artists of every kind hang out: people who paint, shoot, draw, cut film,
+  ArtCraft brings together artists of every kind: people who paint, shoot, draw, cut film,
   set type, and people still figuring out what they like to make. Share what you're working on,
   ask for help, tell us what's broken, or tell us what you wish these tools could do.
   Whatever your medium and however long you've been at it, you're welcome here.
 </p>
 
 <p align="center">
-  <a href="https://discord.gg/artcraft"><b>discord.gg/artcraft</b></a> ·
   <a href="https://getartcraft.com/">getartcraft.com</a> ·
   <a href="https://getartcraft.com/apps">The Crafting Apps</a> ·
   <a href="https://getartcraft.com/apps/effectcraft">EffectCraft</a>

@@ -302,6 +302,10 @@ pub fn handle(app: &mut EffectcraftApp, ctx: &egui::Context, req: &ControlReques
             ok(Value::Null)
         }
         "ui.click" | "ui.move" => {
+            let count = p.get("count").and_then(Value::as_u64).unwrap_or(1);
+            if req.method == "ui.click" && count > 64 {
+                return err("click count must not exceed 64");
+            }
             let pos = match point(app, p) {
                 Ok(p) => p,
                 Err(e) if e.starts_with(RETRY) => return Outcome::Retry(e.trim_start_matches(RETRY).to_string()),
@@ -315,7 +319,6 @@ pub fn handle(app: &mut EffectcraftApp, ctx: &egui::Context, req: &ControlReques
                     Some("middle") => egui::PointerButton::Middle,
                     _ => egui::PointerButton::Primary,
                 };
-                let count = p.get("count").and_then(Value::as_u64).unwrap_or(1);
                 for _ in 0..count {
                     app.synthetic.push(egui::Event::PointerButton { pos, button, pressed: true, modifiers: m });
                     app.synthetic.push(egui::Event::PointerButton { pos, button, pressed: false, modifiers: m });
@@ -324,13 +327,16 @@ pub fn handle(app: &mut EffectcraftApp, ctx: &egui::Context, req: &ControlReques
             Outcome::AfterInput
         }
         "ui.drag" => {
+            let steps = p.get("steps").and_then(Value::as_u64).unwrap_or(12).max(2);
+            if steps > 4096 {
+                return err("drag steps must not exceed 4096");
+            }
             let (Some(from), Some(to)) = (p.get("from"), p.get("to")) else { return err("need `from` and `to`") };
             let (a, b) = match (point(app, from), point(app, to)) {
                 (Ok(a), Ok(b)) => (a, b),
                 (Err(e), _) | (_, Err(e)) if e.starts_with(RETRY) => return Outcome::Retry(e.trim_start_matches(RETRY).to_string()),
                 (Err(e), _) | (_, Err(e)) => return err(e),
             };
-            let steps = p.get("steps").and_then(Value::as_u64).unwrap_or(12).max(2);
             let m = modifiers(p);
             app.synthetic.push(egui::Event::PointerMoved(a));
             app.synthetic.push(egui::Event::PointerButton { pos: a, button: egui::PointerButton::Primary, pressed: true, modifiers: m });
@@ -612,6 +618,24 @@ pub fn encode_png(rgba: &[u8], w: u32, h: u32) -> Result<Vec<u8>, String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn excessive_synthetic_input_is_rejected_without_queued_events() {
+        use super::*;
+        let mut app = EffectcraftApp::new(effectcraft_engine::Session::default());
+        let ctx = egui::Context::default();
+        for (method, params) in [
+            ("ui.click", json!({"x": 1, "y": 1, "count": u64::MAX})),
+            ("ui.drag", json!({"from": {"x": 1, "y": 1}, "to": {"x": 2, "y": 2}, "steps": u64::MAX})),
+        ] {
+            let (request, _) = ControlRequest::new(method, params);
+            assert!(matches!(handle(&mut app, &ctx, &request), Outcome::Done(reply) if reply["ok"] == false));
+            assert!(app.synthetic.is_empty());
+        }
+        let (request, _) = ControlRequest::new("ui.click", json!({"x": 1, "y": 1, "count": 2}));
+        assert!(matches!(handle(&mut app, &ctx, &request), Outcome::AfterInput));
+        assert_eq!(app.synthetic.len(), 5);
+    }
+
     #[test]
     fn base64_rfc4648_vectors() {
         for (i, o) in [("", ""), ("f", "Zg=="), ("fo", "Zm8="), ("foo", "Zm9v"), ("foob", "Zm9vYg=="), ("fooba", "Zm9vYmE="), ("foobar", "Zm9vYmFy")] {
