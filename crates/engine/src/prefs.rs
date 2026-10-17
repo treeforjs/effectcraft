@@ -43,7 +43,12 @@ fn choices(key: &str) -> Option<&'static [(&'static str, &'static str)]> {
 
 /// Settings ▸ Appearance ▸ Theme (label, value).
 const THEMES: &[(&str, &str)] =
-    &[("System", "system"), ("Light", "light"), ("Cream", "cream"), ("Dim", "dim"), ("Dark", "dark"), ("High contrast", "highContrast")];
+    &[("System", "system"), ("Light", "light"), ("Warm", "warm"), ("Dim", "dim"), ("Dark", "dark"), ("High contrast", "highContrast")];
+
+/// The theme's current name for an old one: Warm was called Cream, then Paper.
+fn theme_alias(v: &str) -> Option<&'static str> {
+    (v.eq_ignore_ascii_case("cream") || v.eq_ignore_ascii_case("paper")).then_some("warm")
+}
 
 fn is_choice(choices: &[(&str, &str)], v: &str) -> bool {
     choices.iter().any(|(_, c)| *c == v)
@@ -144,7 +149,7 @@ page!(Previews {
 });
 
 page!(Appearance {
-    /// `system` (follows the desktop), `light`, `cream`, `dim`, `dark` or `highContrast`: the shared craft looks.
+    /// `system` (follows the desktop), `light`, `warm` (formerly `cream`, then `paper`; both still accepted), `dim`, `dark` or `highContrast`: the shared craft looks.
     theme: String = "system".into(),
     /// User interface brightness, -1 (darker) … 1 (lighter).
     brightness: f64 = 0.0,
@@ -470,6 +475,9 @@ impl Prefs {
         if !is_choice(WINDOW_GRAPHICS, &self.startup.window_graphics) {
             self.startup.window_graphics = Startup::default().window_graphics;
         }
+        if let Some(t) = theme_alias(&self.appearance.theme) {
+            self.appearance.theme = t.into();
+        }
         if !is_choice(THEMES, &self.appearance.theme) {
             self.appearance.theme = Appearance::default().theme;
         }
@@ -516,6 +524,10 @@ impl Prefs {
 
     /// Set the value at a dotted key. The key must exist and the value must have its type.
     pub fn set(&mut self, key: &str, value: Value) -> Result<(), String> {
+        let value = match value.as_str().and_then(theme_alias) {
+            Some(t) if key == "appearance.theme" => json!(t),
+            _ => value,
+        };
         if let Some(c) = choices(key)
             && !value.as_str().is_some_and(|v| is_choice(c, v))
         {

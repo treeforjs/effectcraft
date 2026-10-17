@@ -48,7 +48,7 @@ pub const UI_COMMANDS: &[UiCommand] = &[
     uic!("view.fastPreviews", "Fast Previews", [], None),
     uic!("view.theme.system", "Theme: System", [], None),
     uic!("view.theme.light", "Theme: Light", [], None),
-    uic!("view.theme.cream", "Theme: Cream", [], None),
+    uic!("view.theme.warm", "Theme: Warm", [], None),
     uic!("view.theme.dim", "Theme: Dim", [], None),
     uic!("view.theme.dark", "Theme: Dark", [], None),
     uic!("view.theme.highContrast", "Theme: High contrast", [], None),
@@ -467,7 +467,7 @@ pub fn invoke(app: &mut EffectcraftApp, ctx: &egui::Context, id: &str, params: V
         return Ok(Value::Null);
     }
     if let Some(th) = id.strip_prefix("view.theme.") {
-        let k = crate::theme::ThemeKind::from_name(th).ok_or("unknown theme (system, light, cream, dim, dark, highContrast)")?;
+        let k = crate::theme::ThemeKind::from_name(th).ok_or("unknown theme (system, light, warm, dim, dark, highContrast)")?;
         app.set_theme(ctx, k);
         return Ok(Value::Null);
     }
