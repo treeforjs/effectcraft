@@ -16,6 +16,7 @@ EffectCraft is a clean-room, open-source, pure-Rust motion graphics and visual e
 - **Pure Rust.** Media codecs come from FilmCraft crates (git deps behind `crates/media`, see `plan/adr/0001`).
 - **Layering** (`cargo xtask layers`): nothing below L5 depends on egui/eframe/winit/rfd/cpal; L0–L4 build for wasm32.
 - **Exact time:** `effectcraft_time::Tick` (254 016 000 000/s). Keyframe times are **layer time**.
+- **The look is the shared craft design, not After Effects'** ([craftworks `DESIGN.md`](https://github.com/treeforjs/craftworks/blob/main/DESIGN.md)). Parity means After Effects' features and behaviour; `theme::Tokens` come from the `craft-ui` crate (System / Dark / Light / High contrast), shared with every craft app. Use AE for behaviour only; never copy its greys or panel chrome.
 - **Property tree:** everything animatable is a `Property` in the layer's `PropGroup` tree, addressed by paths (`transform/position`, `effects/#1/blurriness`, `@uid`).
 - **Everything is a command** (`crates/engine`): id, label, menu path, shortcut, params, enabled(), run(). UI, CLI, control channel and MCP dispatch by id.
 - **Everything is agent-drivable:** every interactive widget registers an automation id; UI state is serde.

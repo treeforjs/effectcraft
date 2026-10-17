@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 
 /// Current settings layout version.
-pub const PREFS_VERSION: u32 = 2;
+pub const PREFS_VERSION: u32 = 3;
 /// Settings file name in the config store.
 pub const PREFS_FILE: &str = "prefs.json";
 
@@ -40,6 +40,9 @@ fn choices(key: &str) -> Option<&'static [(&'static str, &'static str)]> {
         _ => None,
     }
 }
+
+/// Settings ▸ Appearance ▸ Theme (label, value).
+const THEMES: &[(&str, &str)] = &[("System", "system"), ("Dark", "dark"), ("Light", "light"), ("High contrast", "highContrast")];
 
 fn is_choice(choices: &[(&str, &str)], v: &str) -> bool {
     choices.iter().any(|(_, c)| *c == v)
@@ -140,8 +143,8 @@ page!(Previews {
 });
 
 page!(Appearance {
-    /// `dark`, `darker` or `light`.
-    theme: String = "dark".into(),
+    /// `system` (follows the desktop), `dark`, `light` or `highContrast`: the shared craft looks.
+    theme: String = "system".into(),
     /// User interface brightness, -1 (darker) … 1 (lighter).
     brightness: f64 = 0.0,
     /// The size of the whole interface in percent (75–200), on top of the display's own scale.
@@ -149,7 +152,8 @@ page!(Appearance {
     use_label_color_for_handles: bool = true,
     use_label_color_for_tabs: bool = true,
     cycle_mask_colors: bool = true,
-    use_gradients: bool = true,
+    /// Soft gradients on tab strips and buttons (off: the flat craft look).
+    use_gradients: bool = false,
     /// macOS: draw the menu bar inside the window instead of the system menu bar.
     in_window_menu_bar_mac: bool = false,
 });
@@ -408,6 +412,16 @@ pub fn migrate(mut v: Value) -> Value {
             obj.insert("labels".into(), serde_json::to_value(labels).unwrap_or_default());
         }
     }
+    if version < 3
+        && let Some(a) = obj.get_mut("appearance").and_then(Value::as_object_mut)
+    {
+        // version 3 moves to the shared craft look: Darker is Dark, and gradients (then on by
+        // default) are off.
+        if a.get("theme").and_then(Value::as_str) == Some("darker") {
+            a.insert("theme".into(), json!("dark"));
+        }
+        a.insert("useGradients".into(), json!(false));
+    }
     obj.insert("version".into(), json!(PREFS_VERSION));
     v
 }
@@ -448,6 +462,9 @@ impl Prefs {
         self.version = PREFS_VERSION;
         if !is_choice(WINDOW_GRAPHICS, &self.startup.window_graphics) {
             self.startup.window_graphics = Startup::default().window_graphics;
+        }
+        if !is_choice(THEMES, &self.appearance.theme) {
+            self.appearance.theme = Appearance::default().theme;
         }
         let g = &mut self.general;
         if !is_choice(LANGUAGES, &g.language) {
@@ -1014,7 +1031,7 @@ pub fn pages() -> Vec<Page> {
             id: "appearance",
             title: "Appearance",
             items: vec![
-                s("appearance.theme", "Theme", Kind::Choice(&[("Dark", "dark"), ("Darker", "darker"), ("Light", "light")]), true),
+                s("appearance.theme", "Theme", Kind::Choice(THEMES), true),
                 s("appearance.brightness", "Brightness", Kind::Slider(-1.0, 1.0), true),
                 s("appearance.uiScale", "UI Scale", Kind::Choice(UI_SCALES), true),
                 Section("Labels and Colors"),

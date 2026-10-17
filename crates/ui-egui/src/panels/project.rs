@@ -466,19 +466,13 @@ pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
             true
         };
         if !cell_edit(app, ui, &mut actions, "name", name_rect) {
-            // The selected item's name sits in a light cell with dark text.
+            // The selected item's name sits in a highlighted cell.
             if selected {
                 let g = lp.layout_no_wrap(it.name.clone(), Tokens::ui(12.0), Color32::BLACK);
                 let cell = Rect::from_min_max(pos2(x0 + 27.0, r.min.y + 1.0), pos2((x0 + 33.0 + g.size().x).min(name_clip.max.x), r.max.y - 1.0));
-                lp.with_clip_rect(name_clip.expand2(vec2(3.0, 0.0))).rect_filled(cell, 0.0, Color32::from_rgb(0xa6, 0xa6, 0xa6));
+                lp.with_clip_rect(name_clip.expand2(vec2(3.0, 0.0))).rect_filled(cell, 0.0, t.row_selected);
             }
-            lp.with_clip_rect(name_clip).text(
-                pos2(x0 + 30.0, r.center().y),
-                Align2::LEFT_CENTER,
-                &it.name,
-                Tokens::ui(12.0),
-                if selected { Color32::from_gray(0x16) } else { t.text },
-            );
+            lp.with_clip_rect(name_clip).text(pos2(x0 + 30.0, r.center().y), Align2::LEFT_CENTER, &it.name, Tokens::ui(12.0), t.text);
         }
         // Label swatch: click for the label colour menu.
         let sw = Rect::from_center_size(pos2(label_x, r.center().y), vec2(10.0, 10.0));
