@@ -589,9 +589,9 @@ fn render_backend_says_why_it_renders_on_the_cpu() {
 }
 
 #[test]
-fn cream_and_dim_are_theme_choices_and_old_greys_migrate() {
+fn warm_and_dim_are_theme_choices_and_old_greys_migrate() {
     let mut p = Prefs::default();
-    for t in ["system", "light", "cream", "dim", "dark", "highContrast"] {
+    for t in ["system", "light", "warm", "dim", "dark", "highContrast"] {
         p.set("appearance.theme", json!(t)).unwrap();
         assert_eq!(p.appearance.theme, t);
         assert_eq!(Prefs::from_json(&p.to_json()).appearance.theme, t, "{t} survives a round trip");
@@ -607,9 +607,17 @@ fn cream_and_dim_are_theme_choices_and_old_greys_migrate() {
             _ => None,
         })
         .unwrap();
-    assert_eq!(choices, ["system", "light", "cream", "dim", "dark", "highContrast"]);
+    assert_eq!(choices, ["system", "light", "warm", "dim", "dark", "highContrast"]);
     // Before version 3, Dark was the mid-grey After Effects look (now Dim) and Darker the dark one.
     assert_eq!(Prefs::from_json(r#"{"version": 2, "appearance": {"theme": "dark"}}"#).appearance.theme, "dim");
     assert_eq!(Prefs::from_json(r#"{"version": 2, "appearance": {"theme": "darker"}}"#).appearance.theme, "dark");
     assert_eq!(Prefs::from_json(r#"{"version": 3, "appearance": {"theme": "dark"}}"#).appearance.theme, "dark");
+    // Warm was called Cream, then Paper: old settings and old names still mean Warm.
+    assert_eq!(Prefs::from_json(r#"{"version": 3, "appearance": {"theme": "cream"}}"#).appearance.theme, "warm");
+    assert_eq!(Prefs::from_json(r#"{"appearance": {"theme": "Cream"}}"#).appearance.theme, "warm");
+    assert_eq!(Prefs::from_json(r#"{"version": 3, "appearance": {"theme": "paper"}}"#).appearance.theme, "warm");
+    p.set("appearance.theme", json!("cream")).unwrap();
+    assert_eq!(p.appearance.theme, "warm");
+    p.set("appearance.theme", json!("Paper")).unwrap();
+    assert_eq!(p.appearance.theme, "warm");
 }

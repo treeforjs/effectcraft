@@ -1,7 +1,7 @@
 //! Design tokens. Every widget reads colours/sizes from [`Tokens`] so themes apply everywhere.
 //!
 //! The colours come from the shared `craft-ui` crate (treeforjs/craftworks), so EffectCraft looks
-//! like the other craft apps: System / Light / Cream / Dim / Dark / High contrast. Parity with After Effects is
+//! like the other craft apps: System / Light / Warm / Dim / Dark / High contrast. Parity with After Effects is
 //! about features, not its look. Fonts are Inter + JetBrains Mono (OFL).
 
 use std::sync::Arc;
@@ -19,8 +19,9 @@ pub enum ThemeKind {
     System,
     /// Off-white surfaces.
     Light,
-    /// Warm paper surfaces with a red accent.
-    Cream,
+    /// Warm off-white surfaces with a red accent (called Cream, then Paper; old settings still load).
+    #[serde(alias = "Cream", alias = "Paper")]
+    Warm,
     /// Mid-grey dark: easier on the eyes than Dark.
     Dim,
     #[serde(alias = "Darker")]
@@ -30,14 +31,14 @@ pub enum ThemeKind {
 
 impl ThemeKind {
     /// Every choice, in the order Settings and the View menu list them.
-    pub const ALL: [ThemeKind; 6] = [ThemeKind::System, ThemeKind::Light, ThemeKind::Cream, ThemeKind::Dim, ThemeKind::Dark, ThemeKind::HighContrast];
+    pub const ALL: [ThemeKind; 6] = [ThemeKind::System, ThemeKind::Light, ThemeKind::Warm, ThemeKind::Dim, ThemeKind::Dark, ThemeKind::HighContrast];
 
     pub fn from_name(s: &str) -> Option<ThemeKind> {
         match s.to_ascii_lowercase().as_str() {
             "system" | "auto" => Some(ThemeKind::System),
             "dark" | "default" | "darker" | "darkest" => Some(ThemeKind::Dark),
             "light" => Some(ThemeKind::Light),
-            "cream" | "sepia" | "warm" | "paper" => Some(ThemeKind::Cream),
+            "warm" | "paper" | "cream" | "sepia" | "ivory" => Some(ThemeKind::Warm),
             "dim" | "medium" | "grey" | "gray" | "dusk" => Some(ThemeKind::Dim),
             "highcontrast" | "high-contrast" | "contrast" => Some(ThemeKind::HighContrast),
             _ => None,
@@ -48,7 +49,7 @@ impl ThemeKind {
         match self {
             ThemeKind::System => "system",
             ThemeKind::Light => "light",
-            ThemeKind::Cream => "cream",
+            ThemeKind::Warm => "warm",
             ThemeKind::Dim => "dim",
             ThemeKind::Dark => "dark",
             ThemeKind::HighContrast => "highContrast",
@@ -60,7 +61,7 @@ impl ThemeKind {
         let a = match self {
             ThemeKind::System => craft_ui::Appearance::System,
             ThemeKind::Light => craft_ui::Appearance::Light,
-            ThemeKind::Cream => craft_ui::Appearance::Cream,
+            ThemeKind::Warm => craft_ui::Appearance::Warm,
             ThemeKind::Dim => craft_ui::Appearance::Dim,
             ThemeKind::Dark => craft_ui::Appearance::Dark,
             ThemeKind::HighContrast => craft_ui::Appearance::HighContrast,
@@ -560,11 +561,16 @@ mod tests {
         for k in ThemeKind::ALL {
             assert_eq!(ThemeKind::from_name(k.pref_name()), Some(k), "{k:?}");
         }
-        assert_eq!(ThemeKind::from_name("Cream"), Some(ThemeKind::Cream));
-        assert_eq!(ThemeKind::from_name("sepia"), Some(ThemeKind::Cream));
+        assert_eq!(ThemeKind::from_name("Warm"), Some(ThemeKind::Warm));
+        // The old names still work.
+        assert_eq!(ThemeKind::from_name("Cream"), Some(ThemeKind::Warm));
+        assert_eq!(ThemeKind::from_name("cream"), Some(ThemeKind::Warm));
+        assert_eq!(ThemeKind::from_name("paper"), Some(ThemeKind::Warm));
+        assert_eq!(ThemeKind::from_name("Paper"), Some(ThemeKind::Warm));
+        assert_eq!(ThemeKind::from_name("sepia"), Some(ThemeKind::Warm));
         assert_eq!(ThemeKind::from_name("dim"), Some(ThemeKind::Dim));
         assert_eq!(ThemeKind::from_name("medium"), Some(ThemeKind::Dim));
-        assert_eq!(ThemeKind::Cream.mode(None), Mode::Cream);
+        assert_eq!(ThemeKind::Warm.mode(None), Mode::Warm);
         assert_eq!(ThemeKind::Dim.mode(Some(egui::Theme::Light)), Mode::Dim);
         // Every choice is a craft-ui appearance, in the shared order.
         let ids: Vec<_> = ThemeKind::ALL.iter().map(|k| k.pref_name().to_ascii_lowercase().replace('-', "")).collect();
@@ -573,17 +579,25 @@ mod tests {
     }
 
     #[test]
-    fn cream_draws_as_a_light_theme_and_dim_as_a_dark_one() {
-        let cream = Tokens::for_kind(ThemeKind::Cream);
-        let c = craft_ui::Tokens::new(Mode::Cream, craft_ui::Density::Compact);
+    fn theme_kinds_saved_as_cream_or_paper_load_as_warm() {
+        assert_eq!(serde_json::from_str::<ThemeKind>("\"Cream\"").ok(), Some(ThemeKind::Warm));
+        assert_eq!(serde_json::from_str::<ThemeKind>("\"Paper\"").ok(), Some(ThemeKind::Warm));
+        assert_eq!(serde_json::from_str::<ThemeKind>("\"Warm\"").ok(), Some(ThemeKind::Warm));
+        assert_eq!(serde_json::to_string(&ThemeKind::Warm).ok().as_deref(), Some("\"Warm\""));
+    }
+
+    #[test]
+    fn warm_draws_as_a_light_theme_and_dim_as_a_dark_one() {
+        let warm = Tokens::for_kind(ThemeKind::Warm);
+        let c = craft_ui::Tokens::new(Mode::Warm, craft_ui::Density::Compact);
         // Light themes alternate rows with the page colour.
-        assert_eq!(cream.row_alt, c.bg);
+        assert_eq!(warm.row_alt, c.bg);
         let dark_mode = |t: &Tokens| {
             let ctx = egui::Context::default();
             apply_visuals(&ctx, t);
             ctx.global_style().visuals.dark_mode
         };
-        assert!(!cream.mode.is_dark() && !dark_mode(&cream));
+        assert!(!warm.mode.is_dark() && !dark_mode(&warm));
         let dim = Tokens::for_kind(ThemeKind::Dim);
         assert!(dim.mode.is_dark() && dark_mode(&dim));
         assert_ne!(dim.panel_bg, Tokens::for_kind(ThemeKind::Dark).panel_bg);
