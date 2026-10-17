@@ -1,36 +1,63 @@
 //! Design tokens. Every widget reads colours/sizes from [`Tokens`] so themes apply everywhere.
 //!
-//! The default theme follows the look of After Effects' dark UI (values estimated from public
-//! documentation and product knowledge, tuned by eye; see `plan/aftereffects/README.md` §2). Fonts
-//! are Inter + JetBrains Mono (OFL).
+//! The colours come from the shared `craft-ui` crate (treeforjs/craftworks), so EffectCraft looks
+//! like the other craft apps: System / Dark / Light / High contrast. Parity with After Effects is
+//! about features, not its look. Fonts are Inter + JetBrains Mono (OFL).
 
 use std::sync::Arc;
 
 use egui::{Color32, FontData, FontDefinitions, FontFamily, FontId, Stroke, TextStyle, Visuals};
 use serde::{Deserialize, Serialize};
 
+pub use craft_ui::Mode;
+
+/// Settings ▸ Appearance ▸ Theme: the appearance the user picked.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ThemeKind {
+    /// Follow the desktop's light/dark setting (dark when the desktop doesn't say).
     #[default]
+    System,
+    #[serde(alias = "Darker")]
     Dark,
-    Darker,
     Light,
+    HighContrast,
 }
 
 impl ThemeKind {
     pub fn from_name(s: &str) -> Option<ThemeKind> {
         match s.to_ascii_lowercase().as_str() {
-            "dark" | "default" => Some(ThemeKind::Dark),
-            "darker" | "darkest" => Some(ThemeKind::Darker),
+            "system" | "auto" => Some(ThemeKind::System),
+            "dark" | "default" | "darker" | "darkest" => Some(ThemeKind::Dark),
             "light" => Some(ThemeKind::Light),
+            "highcontrast" | "high-contrast" | "contrast" => Some(ThemeKind::HighContrast),
             _ => None,
         }
+    }
+    /// The Settings ▸ Appearance ▸ Theme value.
+    pub fn pref_name(self) -> &'static str {
+        match self {
+            ThemeKind::System => "system",
+            ThemeKind::Dark => "dark",
+            ThemeKind::Light => "light",
+            ThemeKind::HighContrast => "highContrast",
+        }
+    }
+    /// The colours to draw, given the desktop's theme (`None` = unknown: dark, the motion
+    /// graphics default).
+    pub fn mode(self, system: Option<egui::Theme>) -> Mode {
+        let a = match self {
+            ThemeKind::System => craft_ui::Appearance::System,
+            ThemeKind::Dark => craft_ui::Appearance::Dark,
+            ThemeKind::Light => craft_ui::Appearance::Light,
+            ThemeKind::HighContrast => craft_ui::Appearance::HighContrast,
+        };
+        a.resolve(system, true)
     }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Tokens {
-    pub kind: ThemeKind,
+    pub mode: Mode,
     pub app_bg: Color32,
     pub header_bg: Color32,
     pub panel_bg: Color32,
@@ -39,6 +66,8 @@ pub struct Tokens {
     pub focus: Color32,
     pub accent: Color32,
     pub accent_hover: Color32,
+    /// Text and icons on an `accent` fill.
+    pub text_on_accent: Color32,
     pub text: Color32,
     pub text_dim: Color32,
     pub text_faint: Color32,
@@ -101,96 +130,62 @@ impl Tokens {
 }
 
 impl Tokens {
+    /// The tokens of a theme choice when the desktop's theme is unknown (System = Dark).
     pub fn for_kind(kind: ThemeKind) -> Self {
-        let dark = Tokens {
-            kind,
-            app_bg: Color32::from_rgb(0x12, 0x12, 0x12),
-            header_bg: Color32::from_rgb(0x1f, 0x1f, 0x1f),
-            panel_bg: Color32::from_rgb(0x23, 0x23, 0x23),
-            tab_text: Color32::from_rgb(0x9a, 0x9a, 0x9a),
-            tab_text_active: Color32::from_rgb(0xe3, 0xe3, 0xe3),
-            focus: Color32::from_rgb(0x2d, 0x8c, 0xeb),
-            accent: Color32::from_rgb(0x2d, 0x8c, 0xeb),
-            accent_hover: Color32::from_rgb(0x4a, 0xa0, 0xf5),
-            text: Color32::from_rgb(0xc8, 0xc8, 0xc8),
-            text_dim: Color32::from_rgb(0x9a, 0x9a, 0x9a),
-            text_faint: Color32::from_rgb(0x8c, 0x8c, 0x8c),
-            icon: Color32::from_rgb(0xb4, 0xb4, 0xb4),
-            icon_active: Color32::from_rgb(0xf0, 0xf0, 0xf0),
-            hover: Color32::from_rgb(0x30, 0x30, 0x30),
-            pressed: Color32::from_rgb(0x45, 0x45, 0x45),
-            field_bg: Color32::from_rgb(0x17, 0x17, 0x17),
-            field_border: Color32::from_rgb(0x3a, 0x3a, 0x3a),
-            separator: Color32::from_rgb(0x34, 0x34, 0x34),
-            row: Color32::from_rgb(0x23, 0x23, 0x23),
-            row_alt: Color32::from_rgb(0x27, 0x27, 0x27),
-            row_selected: Color32::from_rgb(0x3a, 0x3a, 0x3a),
-            hot_text: Color32::from_rgb(0x3d, 0x8f, 0xf5),
-            tl_bg: Color32::from_rgb(0x1b, 0x1b, 0x1b),
-            tl_ruler_bg: Color32::from_rgb(0x23, 0x23, 0x23),
-            tl_ruler_tick: Color32::from_rgb(0x70, 0x70, 0x70),
-            tl_ruler_text: Color32::from_rgb(0x9a, 0x9a, 0x9a),
-            cti: Color32::from_rgb(0x2d, 0x8c, 0xeb),
-            work_area: Color32::from_rgb(0x4a, 0x4a, 0x4a),
-            cache_green: Color32::from_rgb(0x3c, 0xa6, 0x4c),
+        Self::for_mode(kind.mode(None))
+    }
+
+    /// EffectCraft's tokens for one of the shared craft-ui modes, so it matches the other apps.
+    pub fn for_mode(mode: Mode) -> Self {
+        let c = craft_ui::Tokens::new(mode, craft_ui::Density::Compact);
+        let light = mode == Mode::Light;
+        Tokens {
+            mode,
+            app_bg: c.bg,
+            header_bg: c.bg,
+            panel_bg: c.surface,
+            tab_text: c.text_muted,
+            tab_text_active: c.text,
+            focus: c.focus,
+            accent: c.accent,
+            accent_hover: c.accent_hover,
+            text_on_accent: c.text_on_accent,
+            text: c.text,
+            text_dim: c.text_muted,
+            text_faint: c.text_faint,
+            icon: c.icon,
+            icon_active: c.text,
+            hover: c.hover,
+            pressed: c.pressed,
+            field_bg: c.field,
+            field_border: c.border,
+            separator: c.divider,
+            row: c.surface,
+            row_alt: if light { c.bg } else { c.surface_raised },
+            row_selected: c.accent_soft,
+            hot_text: c.accent_text,
+            tl_bg: c.bg,
+            tl_ruler_bg: c.surface,
+            tl_ruler_tick: c.text_faint,
+            tl_ruler_text: c.text_muted,
+            cti: c.focus,
+            work_area: c.pressed,
+            cache_green: c.success,
             cache_blue: Color32::from_rgb(0x3a, 0x6f, 0xd8),
-            keyframe: Color32::from_rgb(0xa8, 0xa8, 0xa8),
-            keyframe_selected: Color32::from_rgb(0x3d, 0x8f, 0xf5),
-            pasteboard: Color32::from_rgb(0x1a, 0x1a, 0x1a),
-            timecode: Color32::from_rgb(0x3d, 0x8f, 0xf5),
-            danger: Color32::from_rgb(0xe0, 0x4a, 0x3c),
-            warning: Color32::from_rgb(0xe8, 0x9a, 0x2c),
+            // Keyframes have no outline: the icon colour stands out on the time graph.
+            keyframe: c.icon,
+            keyframe_selected: c.accent_text,
+            pasteboard: c.bg,
+            timecode: c.accent_text,
+            danger: c.danger,
+            warning: c.warning,
             labels: default_labels(),
-            radius: 6.0,
-            radius_sm: 3.0,
+            radius: f32::from(craft_ui::tokens::radius::MD),
+            radius_sm: f32::from(craft_ui::tokens::radius::SM),
             gap: 4.0,
             tab_h: 30.0,
             row_h: 19.0,
-            gradients: true,
-        };
-        match kind {
-            ThemeKind::Dark => dark,
-            ThemeKind::Darker => Tokens {
-                app_bg: Color32::from_rgb(0x08, 0x08, 0x08),
-                header_bg: Color32::from_rgb(0x16, 0x16, 0x16),
-                panel_bg: Color32::from_rgb(0x19, 0x19, 0x19),
-                row: Color32::from_rgb(0x19, 0x19, 0x19),
-                row_alt: Color32::from_rgb(0x1d, 0x1d, 0x1d),
-                tl_bg: Color32::from_rgb(0x12, 0x12, 0x12),
-                tl_ruler_bg: Color32::from_rgb(0x19, 0x19, 0x19),
-                field_bg: Color32::from_rgb(0x0e, 0x0e, 0x0e),
-                pasteboard: Color32::from_rgb(0x11, 0x11, 0x11),
-                ..dark
-            },
-            ThemeKind::Light => Tokens {
-                app_bg: Color32::from_rgb(0xb4, 0xb4, 0xb4),
-                header_bg: Color32::from_rgb(0xd6, 0xd6, 0xd6),
-                panel_bg: Color32::from_rgb(0xe6, 0xe6, 0xe6),
-                tab_text: Color32::from_rgb(0x5a, 0x5a, 0x5a),
-                tab_text_active: Color32::from_rgb(0x14, 0x14, 0x14),
-                text: Color32::from_rgb(0x22, 0x22, 0x22),
-                text_dim: Color32::from_rgb(0x5a, 0x5a, 0x5a),
-                text_faint: Color32::from_rgb(0x68, 0x68, 0x68),
-                hot_text: Color32::from_rgb(0x00, 0x5a, 0x9c),
-                timecode: Color32::from_rgb(0x00, 0x5a, 0x9c),
-                icon: Color32::from_rgb(0x3c, 0x3c, 0x3c),
-                icon_active: Color32::from_rgb(0x10, 0x10, 0x10),
-                hover: Color32::from_rgb(0xd0, 0xd0, 0xd0),
-                pressed: Color32::from_rgb(0xc0, 0xc0, 0xc0),
-                field_bg: Color32::from_rgb(0xfa, 0xfa, 0xfa),
-                field_border: Color32::from_rgb(0xaa, 0xaa, 0xaa),
-                separator: Color32::from_rgb(0xc8, 0xc8, 0xc8),
-                row: Color32::from_rgb(0xe6, 0xe6, 0xe6),
-                row_alt: Color32::from_rgb(0xde, 0xde, 0xde),
-                row_selected: Color32::from_rgb(0xaa, 0xc8, 0xf0),
-                tl_bg: Color32::from_rgb(0xd2, 0xd2, 0xd2),
-                tl_ruler_bg: Color32::from_rgb(0xe2, 0xe2, 0xe2),
-                tl_ruler_text: Color32::from_rgb(0x50, 0x50, 0x50),
-                pasteboard: Color32::from_rgb(0xa8, 0xa8, 0xa8),
-                // Keyframes have no outline: dark enough to stand out on the light time graph.
-                keyframe: Color32::from_rgb(0x6c, 0x6c, 0x6c),
-                ..dark
-            },
+            gradients: false,
         }
     }
 
@@ -212,10 +207,11 @@ impl Tokens {
         self.labels[i]
     }
 
-    /// Theme tokens for the current settings: theme, UI brightness and label colours.
-    pub fn from_prefs(p: &effectcraft_engine::prefs::Prefs) -> Tokens {
+    /// Theme tokens for the current settings (theme, UI brightness and label colours) on a
+    /// desktop with theme `system`.
+    pub fn from_prefs(p: &effectcraft_engine::prefs::Prefs, system: Option<egui::Theme>) -> Tokens {
         let kind = ThemeKind::from_name(&p.appearance.theme).unwrap_or_default();
-        let mut t = Tokens::for_kind(kind).with_brightness(p.appearance.brightness as f32);
+        let mut t = Tokens::for_mode(kind.mode(system)).with_brightness(p.appearance.brightness as f32);
         for (i, l) in effectcraft_color::Label::ALL.iter().enumerate() {
             let [r, g, b] = p.label_rgb(*l);
             t.labels[i] = Color32::from_rgb(r, g, b);
@@ -224,8 +220,8 @@ impl Tokens {
         t
     }
 
-    /// Lighten (b > 0) or darken (b < 0) the interface greys, like After Effects' brightness
-    /// slider. Accent colours, labels and keyframe colours are kept.
+    /// Lighten (b > 0) or darken (b < 0) the interface greys (Settings ▸ Appearance ▸
+    /// Brightness). Accent colours, labels and keyframe colours are kept.
     pub fn with_brightness(mut self, b: f32) -> Tokens {
         let b = b.clamp(-1.0, 1.0);
         if b.abs() < 1e-3 {
@@ -387,18 +383,18 @@ fn is_chinese(language: &str) -> bool {
 }
 
 pub fn apply_visuals(ctx: &egui::Context, t: &Tokens) {
-    let mut v = if t.kind == ThemeKind::Light { Visuals::light() } else { Visuals::dark() };
+    let mut v = if t.mode.is_dark() { Visuals::dark() } else { Visuals::light() };
     v.panel_fill = t.panel_bg;
     v.window_fill = t.panel_bg;
     v.extreme_bg_color = t.field_bg;
     v.faint_bg_color = t.row_alt;
     v.override_text_color = Some(t.text);
     v.selection.bg_fill = t.accent;
-    v.selection.stroke = Stroke::new(1.0, Color32::WHITE);
+    v.selection.stroke = Stroke::new(1.0, t.text_on_accent);
     v.hyperlink_color = t.accent;
     v.window_stroke = Stroke::new(1.0, t.field_border);
-    v.window_corner_radius = egui::CornerRadius::same(8);
-    v.menu_corner_radius = egui::CornerRadius::same(6);
+    v.window_corner_radius = egui::CornerRadius::same(craft_ui::tokens::radius::XL);
+    v.menu_corner_radius = egui::CornerRadius::same(craft_ui::tokens::radius::LG);
     v.popup_shadow = egui::epaint::Shadow { offset: [0, 6], blur: 20, spread: 0, color: Color32::from_black_alpha(150) };
     v.window_shadow = egui::epaint::Shadow { offset: [0, 10], blur: 36, spread: 0, color: Color32::from_black_alpha(170) };
     for w in [&mut v.widgets.noninteractive, &mut v.widgets.inactive, &mut v.widgets.hovered, &mut v.widgets.active, &mut v.widgets.open] {

@@ -367,13 +367,19 @@ impl EffectcraftApp {
 
     /// Apply changed settings: theme and brightness, label colours, tool tips, preview caches.
     pub fn apply_prefs(&mut self, ctx: &egui::Context) {
+        let system = ctx.system_theme();
         if self.applied_prefs == Some(self.session.prefs_revision) {
+            // System theme: follow the desktop switching between light and dark
+            if self.ui.theme.mode(system) != self.tokens.mode {
+                self.tokens = Tokens::from_prefs(&self.session.prefs, system);
+                theme::apply_visuals(ctx, &self.tokens);
+            }
             return;
         }
         self.applied_prefs = Some(self.session.prefs_revision);
         let p = &self.session.prefs;
         self.ui.theme = theme::ThemeKind::from_name(&p.appearance.theme).unwrap_or_default();
-        self.tokens = Tokens::from_prefs(p);
+        self.tokens = Tokens::from_prefs(p, system);
         theme::apply_visuals(ctx, &self.tokens);
         let tips = p.general.show_tool_tips;
         ctx.all_styles_mut(|s| s.interaction.tooltip_delay = if tips { 0.5 } else { f32::INFINITY });
@@ -400,12 +406,7 @@ impl EffectcraftApp {
     }
 
     pub fn set_theme(&mut self, ctx: &egui::Context, k: theme::ThemeKind) {
-        let name = match k {
-            theme::ThemeKind::Dark => "dark",
-            theme::ThemeKind::Darker => "darker",
-            theme::ThemeKind::Light => "light",
-        };
-        let _ = self.set_pref("appearance.theme", json!(name));
+        let _ = self.set_pref("appearance.theme", json!(k.pref_name()));
         self.apply_prefs(ctx);
     }
 

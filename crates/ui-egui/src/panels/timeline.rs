@@ -60,10 +60,6 @@ fn classic_geometry_row(comp: &Comp, l: &Layer) -> bool {
 /// Time navigator's visible-span bar and the work area bar.
 const NAV_BAR: Color32 = Color32::from_rgb(0x55, 0x55, 0x55);
 const WORK_AREA_BAR: Color32 = Color32::from_rgb(0x5c, 0x5c, 0x5c);
-/// Fill of the timeline's switch / A/V boxes (dark wells, as in After Effects).
-const SWITCH_BOX: Color32 = Color32::from_rgb(0x19, 0x19, 0x19);
-/// Background of the selected layer's name cell.
-const SELECTED_NAME_BG: Color32 = Color32::from_rgb(0xa6, 0xa6, 0xa6);
 
 /// A layer bar's fill: the label colour muted toward grey (a little brighter when selected).
 pub(crate) fn bar_color(label: Color32, selected: bool) -> Color32 {
@@ -1702,7 +1698,7 @@ pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
                     if !applicable || !vis.av {
                         continue;
                     }
-                    lp.rect_filled(br.shrink(0.5), 1.0, SWITCH_BOX);
+                    lp.rect_filled(br.shrink(0.5), 1.0, t.field_bg);
                     layer_switch(ui, &t, r, br, icon, on, egui::Id::new(("av", layer.id.0, i)), layer.id.0, name, &mut actions);
                     app.auto.add(&format!("timeline.layer.{}.{name}", layer.id.0), br, name);
                 }
@@ -1762,15 +1758,15 @@ pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
                         ctx.data_mut(|d| d.insert_temp(rename_id, (rl, buf)));
                     }
                 } else {
-                    // The selected layer's name sits in a light cell with dark text.
-                    let name_col = if is_sel { Color32::from_gray(0x16) } else { t.text };
+                    // The selected layer's name sits in a highlighted cell.
+                    let name_col = t.text;
                     if is_sel {
                         let g = lp.layout_no_wrap(display_name(app, layer), Tokens::ui(12.0), name_col);
                         let cell = Rect::from_min_max(
                             pos2(name_rect.min.x - 3.0, r.min.y + 1.0),
                             pos2((name_rect.min.x + g.size().x + 4.0).max(cw.name_end - 4.0).min(cw.name_end - 2.0), r.max.y - 1.0),
                         );
-                        lp.rect_filled(cell, 0.0, SELECTED_NAME_BG);
+                        lp.rect_filled(cell, 0.0, t.row_selected);
                     }
                     let lpn = lp.with_clip_rect(name_rect.intersect(lp.clip_rect()));
                     lpn.text(pos2(name_rect.min.x, cy), Align2::LEFT_CENTER, display_name(app, layer), Tokens::ui(12.0), name_col);
@@ -1828,7 +1824,7 @@ pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
                         continue;
                     }
                     let br = Rect::from_center_size(pos2(cw.switches + SW * i as f32 + SW / 2.0, cy), vec2(16.0, 16.0));
-                    lp.rect_filled(br.shrink(1.0), 1.0, SWITCH_BOX);
+                    lp.rect_filled(br.shrink(1.0), 1.0, t.field_bg);
                     layer_switch(ui, &t, r, br, icon, on, egui::Id::new(("sw", layer.id.0, i)), layer.id.0, name, &mut actions);
                     app.auto.add(&format!("timeline.layer.{}.switch.{name}", layer.id.0), br, name);
                 }
@@ -2268,7 +2264,7 @@ pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
                 }
                 // The editor in the time-graph area.
                 ui.set_clip_rect(right_clip);
-                gp.rect_filled(Rect::from_min_max(pos2(graph_x0, r.min.y), r.max), 0.0, Color32::from_rgb(0x1a, 0x1a, 0x1a));
+                gp.rect_filled(Rect::from_min_max(pos2(graph_x0, r.min.y), r.max), 0.0, t.field_bg);
                 let er = Rect::from_min_max(pos2(graph_x0 + 8.0, r.min.y + 3.0), pos2(rect.max.x - 14.0, r.max.y - 3.0));
                 let mut buf: String = ctx.data(|d| d.get_temp(buf_id)).unwrap_or_else(|| ex.text.clone());
                 if let Some(after) = ctx.data_mut(|d| d.remove_temp::<usize>(expr_refocus_id(*uid))) {
