@@ -1,7 +1,7 @@
 //! Design tokens. Every widget reads colours/sizes from [`Tokens`] so themes apply everywhere.
 //!
 //! The colours come from the shared `craft-ui` crate (treeforjs/craftworks), so EffectCraft looks
-//! like the other craft apps: System / Dark / Light / High contrast. Parity with After Effects is
+//! like the other craft apps: System / Light / Cream / Dim / Dark / High contrast. Parity with After Effects is
 //! about features, not its look. Fonts are Inter + JetBrains Mono (OFL).
 
 use std::sync::Arc;
@@ -17,18 +17,28 @@ pub enum ThemeKind {
     /// Follow the desktop's light/dark setting (dark when the desktop doesn't say).
     #[default]
     System,
+    /// Off-white surfaces.
+    Light,
+    /// Warm paper surfaces with a red accent.
+    Cream,
+    /// Mid-grey dark: easier on the eyes than Dark.
+    Dim,
     #[serde(alias = "Darker")]
     Dark,
-    Light,
     HighContrast,
 }
 
 impl ThemeKind {
+    /// Every choice, in the order Settings and the View menu list them.
+    pub const ALL: [ThemeKind; 6] = [ThemeKind::System, ThemeKind::Light, ThemeKind::Cream, ThemeKind::Dim, ThemeKind::Dark, ThemeKind::HighContrast];
+
     pub fn from_name(s: &str) -> Option<ThemeKind> {
         match s.to_ascii_lowercase().as_str() {
             "system" | "auto" => Some(ThemeKind::System),
             "dark" | "default" | "darker" | "darkest" => Some(ThemeKind::Dark),
             "light" => Some(ThemeKind::Light),
+            "cream" | "sepia" | "warm" | "paper" => Some(ThemeKind::Cream),
+            "dim" | "medium" | "grey" | "gray" | "dusk" => Some(ThemeKind::Dim),
             "highcontrast" | "high-contrast" | "contrast" => Some(ThemeKind::HighContrast),
             _ => None,
         }
@@ -37,8 +47,10 @@ impl ThemeKind {
     pub fn pref_name(self) -> &'static str {
         match self {
             ThemeKind::System => "system",
-            ThemeKind::Dark => "dark",
             ThemeKind::Light => "light",
+            ThemeKind::Cream => "cream",
+            ThemeKind::Dim => "dim",
+            ThemeKind::Dark => "dark",
             ThemeKind::HighContrast => "highContrast",
         }
     }
@@ -47,8 +59,10 @@ impl ThemeKind {
     pub fn mode(self, system: Option<egui::Theme>) -> Mode {
         let a = match self {
             ThemeKind::System => craft_ui::Appearance::System,
-            ThemeKind::Dark => craft_ui::Appearance::Dark,
             ThemeKind::Light => craft_ui::Appearance::Light,
+            ThemeKind::Cream => craft_ui::Appearance::Cream,
+            ThemeKind::Dim => craft_ui::Appearance::Dim,
+            ThemeKind::Dark => craft_ui::Appearance::Dark,
             ThemeKind::HighContrast => craft_ui::Appearance::HighContrast,
         };
         a.resolve(system, true)
@@ -138,7 +152,7 @@ impl Tokens {
     /// EffectCraft's tokens for one of the shared craft-ui modes, so it matches the other apps.
     pub fn for_mode(mode: Mode) -> Self {
         let c = craft_ui::Tokens::new(mode, craft_ui::Density::Compact);
-        let light = mode == Mode::Light;
+        let light = !mode.is_dark();
         Tokens {
             mode,
             app_bg: c.bg,
@@ -539,6 +553,40 @@ mod tests {
     /// The last `n` font names of `family`, in order.
     fn tail(family: &[String], n: usize) -> Vec<&str> {
         family.iter().rev().take(n).rev().map(String::as_str).collect()
+    }
+
+    #[test]
+    fn every_theme_round_trips_through_its_name_and_the_shared_appearance() {
+        for k in ThemeKind::ALL {
+            assert_eq!(ThemeKind::from_name(k.pref_name()), Some(k), "{k:?}");
+        }
+        assert_eq!(ThemeKind::from_name("Cream"), Some(ThemeKind::Cream));
+        assert_eq!(ThemeKind::from_name("sepia"), Some(ThemeKind::Cream));
+        assert_eq!(ThemeKind::from_name("dim"), Some(ThemeKind::Dim));
+        assert_eq!(ThemeKind::from_name("medium"), Some(ThemeKind::Dim));
+        assert_eq!(ThemeKind::Cream.mode(None), Mode::Cream);
+        assert_eq!(ThemeKind::Dim.mode(Some(egui::Theme::Light)), Mode::Dim);
+        // Every choice is a craft-ui appearance, in the shared order.
+        let ids: Vec<_> = ThemeKind::ALL.iter().map(|k| k.pref_name().to_ascii_lowercase().replace('-', "")).collect();
+        let shared: Vec<_> = craft_ui::Appearance::ALL.iter().map(|a| a.id().replace('-', "")).collect();
+        assert_eq!(ids, shared);
+    }
+
+    #[test]
+    fn cream_draws_as_a_light_theme_and_dim_as_a_dark_one() {
+        let cream = Tokens::for_kind(ThemeKind::Cream);
+        let c = craft_ui::Tokens::new(Mode::Cream, craft_ui::Density::Compact);
+        // Light themes alternate rows with the page colour.
+        assert_eq!(cream.row_alt, c.bg);
+        let dark_mode = |t: &Tokens| {
+            let ctx = egui::Context::default();
+            apply_visuals(&ctx, t);
+            ctx.global_style().visuals.dark_mode
+        };
+        assert!(!cream.mode.is_dark() && !dark_mode(&cream));
+        let dim = Tokens::for_kind(ThemeKind::Dim);
+        assert!(dim.mode.is_dark() && dark_mode(&dim));
+        assert_ne!(dim.panel_bg, Tokens::for_kind(ThemeKind::Dark).panel_bg);
     }
 
     #[test]

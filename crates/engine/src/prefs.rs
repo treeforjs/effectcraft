@@ -42,7 +42,8 @@ fn choices(key: &str) -> Option<&'static [(&'static str, &'static str)]> {
 }
 
 /// Settings ▸ Appearance ▸ Theme (label, value).
-const THEMES: &[(&str, &str)] = &[("System", "system"), ("Dark", "dark"), ("Light", "light"), ("High contrast", "highContrast")];
+const THEMES: &[(&str, &str)] =
+    &[("System", "system"), ("Light", "light"), ("Cream", "cream"), ("Dim", "dim"), ("Dark", "dark"), ("High contrast", "highContrast")];
 
 fn is_choice(choices: &[(&str, &str)], v: &str) -> bool {
     choices.iter().any(|(_, c)| *c == v)
@@ -143,7 +144,7 @@ page!(Previews {
 });
 
 page!(Appearance {
-    /// `system` (follows the desktop), `dark`, `light` or `highContrast`: the shared craft looks.
+    /// `system` (follows the desktop), `light`, `cream`, `dim`, `dark` or `highContrast`: the shared craft looks.
     theme: String = "system".into(),
     /// User interface brightness, -1 (darker) … 1 (lighter).
     brightness: f64 = 0.0,
@@ -415,10 +416,16 @@ pub fn migrate(mut v: Value) -> Value {
     if version < 3
         && let Some(a) = obj.get_mut("appearance").and_then(Value::as_object_mut)
     {
-        // version 3 moves to the shared craft look: Darker is Dark, and gradients (then on by
-        // default) are off.
-        if a.get("theme").and_then(Value::as_str) == Some("darker") {
-            a.insert("theme".into(), json!("dark"));
+        // version 3 moves to the shared craft look: the old mid-grey Dark (After Effects'
+        // default brightness) is Dim, Darker is Dark, and gradients (then on by default) are off.
+        match a.get("theme").and_then(Value::as_str) {
+            Some("dark" | "default") => {
+                a.insert("theme".into(), json!("dim"));
+            }
+            Some("darker" | "darkest") => {
+                a.insert("theme".into(), json!("dark"));
+            }
+            _ => {}
         }
         a.insert("useGradients".into(), json!(false));
     }
