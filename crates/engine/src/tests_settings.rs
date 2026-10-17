@@ -587,3 +587,29 @@ fn render_backend_says_why_it_renders_on_the_cpu() {
     assert_eq!(why(&mut s), json!("headless: renders on the CPU unless started with --gpu"));
     assert_eq!(s.execute("render.backend", json!({"backend": "cpu"})).unwrap()["why"], json!("the project's renderer is Mercury Software Only"));
 }
+
+#[test]
+fn cream_and_dim_are_theme_choices_and_old_greys_migrate() {
+    let mut p = Prefs::default();
+    for t in ["system", "light", "cream", "dim", "dark", "highContrast"] {
+        p.set("appearance.theme", json!(t)).unwrap();
+        assert_eq!(p.appearance.theme, t);
+        assert_eq!(Prefs::from_json(&p.to_json()).appearance.theme, t, "{t} survives a round trip");
+    }
+    let page = crate::prefs::pages().into_iter().find(|pg| pg.id == "appearance").unwrap();
+    let choices = page
+        .items
+        .iter()
+        .find_map(|i| match i {
+            crate::prefs::Item::Setting { key: "appearance.theme", kind: crate::prefs::Kind::Choice(c), .. } => {
+                Some(c.iter().map(|(_, v)| *v).collect::<Vec<_>>())
+            }
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(choices, ["system", "light", "cream", "dim", "dark", "highContrast"]);
+    // Before version 3, Dark was the mid-grey After Effects look (now Dim) and Darker the dark one.
+    assert_eq!(Prefs::from_json(r#"{"version": 2, "appearance": {"theme": "dark"}}"#).appearance.theme, "dim");
+    assert_eq!(Prefs::from_json(r#"{"version": 2, "appearance": {"theme": "darker"}}"#).appearance.theme, "dark");
+    assert_eq!(Prefs::from_json(r#"{"version": 3, "appearance": {"theme": "dark"}}"#).appearance.theme, "dark");
+}
